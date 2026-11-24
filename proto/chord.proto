@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package chord;
+
+option go_package = "chord/gen/chordpb";
+
+message Empty {}
+
+message NodeInfo {
+  bytes id = 1;
+  string addr = 2;
+}
+
+// Internal ring operations between nodes.
+service RingService {
+  rpc FindSuccessor(FindSuccessorRequest) returns (FindSuccessorResponse);
+  rpc GetPredecessor(Empty) returns (GetPredecessorResponse);
+  rpc Notify(NotifyRequest) returns (Empty);
+  rpc Ping(Empty) returns (Empty);
+  rpc TransferKeys(TransferKeysRequest) returns (stream FileRecord);
+  rpc StoreLocal(StoreLocalRequest) returns (Empty);
+  rpc FetchLocal(FetchLocalRequest) returns (FetchLocalResponse);
+}
+
+// Client and control operations.
+service FileService {
+  rpc PutFile(PutFileRequest) returns (PutFileResponse);
+  rpc GetFile(GetFileRequest) returns (GetFileResponse);
+  rpc GetNodeState(Empty) returns (NodeState);
+  rpc FlushCache(Empty) returns (Empty);
+}
+
+message FindSuccessorRequest {
+  bytes key_id = 1;
+  int32 hop_count = 2;
+}
+
+message FindSuccessorResponse {
+  NodeInfo successor = 1;
+  repeated string path = 2; // hex NodeIDs of nodes that handled the lookup, in order
+}
+
+message GetPredecessorResponse {
+  bool has_predecessor = 1;
+  NodeInfo predecessor = 2;
+}
+
+message NotifyRequest {
+  NodeInfo node = 1;
+}
+
+message TransferKeysRequest {
+  NodeInfo new_node = 1;
+}
+
+message FileRecord {
+  bytes key_id = 1;
+  bytes data = 2;
+}
+
+message StoreLocalRequest {
+  bytes key_id = 1;
+  bytes data = 2;
+}
+
+message FetchLocalRequest {
+  bytes key_id = 1;
+}
+
+message FetchLocalResponse {
+  bool responsible = 1;
+  bool found = 2;
+  bytes data = 3;
+}
+
+message PutFileRequest {
+  string name = 1;
+  bytes data = 2;
+}
+
+message PutFileResponse {
+  NodeInfo owner = 1;
+  int32 hop_count = 2;
+  repeated string path = 3;
+  int64 elapsed_ns = 4;
+}
+
+message GetFileRequest {
+  string name = 1;
+  bool bypass_cache = 2;
+}
+
+message GetFileResponse {
+  bool found = 1;
+  bytes data = 2;
+  NodeInfo owner = 3;
+  int32 hop_count = 4;
+  repeated string path = 5;
+  bool from_cache = 6;
+  int64 elapsed_ns = 7;
+  string trace_id = 8; // set only when the node runs with LOG_LEVEL=DEBUG
+}
+
+message NodeState {
+  NodeInfo self = 1;
+  bool has_predecessor = 2;
+  NodeInfo predecessor = 3;
+  NodeInfo successor = 4;
+  int64 file_count = 5;
+  bool cache_enabled = 6;
+  int64 cache_hits = 7;
+  int64 cache_misses = 8;
+  int64 cache_size = 9;
+}

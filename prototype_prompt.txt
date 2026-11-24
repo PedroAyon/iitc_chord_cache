@@ -1,0 +1,102 @@
+Act as a Senior Distributed Systems Engineer specializing in Go and Peer-to-Peer architectures. Your goal is to design and implement a distributed file storage and lookup system based on the Chord DHT protocol, optimized with per-node local caching to reduce search latency, fully dockerized, and equipped for comparative benchmarking.
+
+The caching system will be manually implemented, leave the codebase ready to implement caching, but return a cache miss on every search.
+
+
+GENERAL PRINCIPLES AND CONSTRAINTS
+
+1. Simplicity and No Overengineering: Keep the design and implementation as simple and direct as possible. Avoid unnecessary abstractions, complex design patterns, or extra layers that do not directly serve the requirements. Fulfilling the requested specifications cleanly and reliably is sufficient.
+
+2. Minimal Comments: Do not overuse comments. Make the code self-documenting through clear naming and concise functions. Only write comments when explaining tricky parts.
+
+3. Project Structure: Propose a clean directory structure that best fits this system.
+
+
+REQUIRED TECH STACK
+
+Language: Go (1.22 or newer) with safe concurrency handling (sync.RWMutex, goroutines, contexts).
+
+Node and Client Communication: gRPC with Protocol Buffers (proto3).
+
+Consistent Hashing: SHA-1 (crypto/sha1) over an m = 160-bit circular identifier space using math/big.
+
+Containerization: Docker and docker-compose supporting dynamic scaling to N node containers.
+
+
+FUNCTIONAL REQUIREMENTS
+
+1. Chord Protocol Core
+
+Implement the core Chord protocol according to the original Stoica et al. paper:
+
+a) Identifiers: Compute NodeID as SHA-1(IP:Port) and KeyID as SHA-1(filename) in a 160-bit space.
+
+b) Routing and Finger Table: Maintain predecessor, immediate successor, and a 160-entry finger table where entry k (from 1 to 160) points to the successor of (n + 2^(k-1)) mod 2^160. Implement find_successor and closest_preceding_node with accurate circular interval checks for (a, b) and (a, b].
+
+c) Dynamic Ring Maintenance: Implement create (bootstrap a new ring), join (contact bootstrap node, locate successor, and transfer keys/files belonging to (predecessor, self]), and periodic background goroutines for stabilize, notify, fix_fingers, and check_predecessor.
+
+d) Routing Telemetry: Every lookup must track and return hop count, ordered list of visited NodeIDs (hop trace), whether the result came from cache, and total elapsed time.
+
+
+2. Per-Node Local Cache
+
+a) Provide a runtime toggle (via environment variable) to enable or disable cache usage, as well as a FlushCache RPC to clear caches across nodes before benchmark runs.
+
+
+3. File Storage and gRPC API
+
+a) Store files directly on each container's local filesystem (for example under /var/lib/chord/data/). No real datasets are required; files will come from a synthetic generator script.
+
+b) Define clean Protobuf services for internal ring operations (FindSuccessor, GetPredecessor, Notify, Ping, TransferKeys) and client/control operations (PutFile, GetFile, GetNodeState returning ring pointers and Otter hit/miss stats, and FlushCache).
+
+
+4. CLI Client
+
+Build a command-line client that connects to any node in the ring and supports:
+
+a) Uploading a single file or batch-uploading a directory of files to their responsible nodes.
+
+b) Retrieving a file by name (with an option to bypass cache) and printing the hop trace, latency, and cache hit/miss status.
+
+c) Inspecting the active ring in order, showing each node's ID, responsibility range and stored file count.
+
+d) Triggering the benchmark suite.
+
+
+5. Synthetic Data Generator Script
+
+Provide a simple script (in Go or Bash) that generates a configurable number of dummy files (e.g., 500 or 1,000 files) with unique names and synthetic payloads of varying sizes (e.g., 1 KB to 256 KB) to seed the cluster.
+
+
+6. Benchmarking Suite
+
+Implement an automated benchmark mode to compare system performance with Cache ON versus Cache OFF:
+
+a) Support both Uniform and Zipfian access distributions.
+
+b) Run a warm-up phase, execute M concurrent lookups with caching disabled, flush caches and reset metrics, execute the same M concurrent lookups with caching enabled, and output a clear comparison.
+
+c) Report average, min, max, p50, p95, and p99 latencies, average hops per lookup, throughput (requests/second), and cache hit rate percentage, printing a summary table to the console and saving raw results to JSON or CSV.
+
+7. Debug-Only Request Logging
+
+Configure log/slog to output structured logs (supporting JSON for Docker log aggregation and readable text for local debugging), controlled by a LOG_LEVEL environment variable (DEBUG, INFO, WARN, ERROR):
+
+a) Emit per-request, per-hop routing, and cache hit/miss logs strictly at DEBUG level so they only run when debugging and add near-zero overhead during normal operation and benchmarks.
+
+b) Reserve INFO for low-frequency lifecycle events (node startup, ring join, key transfers) and default production/benchmark configurations to WARN so stdout I/O never throttles throughput or inflates tail latencies.
+
+c) When LOG_LEVEL=DEBUG is active, generate a unique trace_id per client request and propagate it through gRPC metadata across every hop so the full path of any lookup can be traced across multiple node containers, including structured fields such as component, node_id, trace_id, and hop_count.
+
+
+DOCKER AND DEPLOYMENT
+
+1. Multi-stage Dockerfile compiling both the Chord node daemon and the CLI client into lightweight container images.
+
+2. Scalable docker-compose.yml defining a bootstrap node and a scalable worker node service so a cluster of N nodes can be started easily (for example with docker compose up -d --scale chord-node=9).
+
+3. Makefile with straightforward targets to compile protobufs, start/scale the cluster, generate and seed synthetic files, inspect ring state, run benchmarks, and tear down containers.
+
+DELIVERABLES
+
+Deliver the complete, working codebase ready to build and run via Docker Compose, with all code, and a simple but clear README.md setup documentation file.
